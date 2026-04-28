@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>夜行列车 · 行程推荐</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <!-- 顶部 Hero -->
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="hero-icon">🌙</div>
+      <h1>夜行列车推荐</h1>
+      <p class="hero-sub">假期出行·用卧铺代替酒店，边睡觉边赶路</p>
+    </div>
+  </header>
+
+  <!-- 查询表单 -->
+  <main class="container">
+    <section class="search-card card">
+      <form id="searchForm" autocomplete="off">
+        <div class="form-grid">
+          <!-- 出发地 -->
+          <div class="field">
+            <label for="fromCity">出发城市 / 站名</label>
+            <div class="input-wrap">
+              <span class="input-icon">🚉</span>
+              <input id="fromCity" name="from" type="text" placeholder="如：北京" required />
+              <ul class="autocomplete-list" id="fromAC"></ul>
+            </div>
+          </div>
+
+          <!-- 交换按钮 -->
+          <button type="button" class="swap-btn" id="swapBtn" title="交换起终点">⇄</button>
+
+          <!-- 目的地 -->
+          <div class="field">
+            <label for="toCity">目的城市 / 站名</label>
+            <div class="input-wrap">
+              <span class="input-icon">📍</span>
+              <input id="toCity" name="to" type="text" placeholder="如：上海" required />
+              <ul class="autocomplete-list" id="toAC"></ul>
+            </div>
+          </div>
+
+          <!-- 日期 -->
+          <div class="field date-field">
+            <label for="travelDate">出发日期</label>
+            <div class="input-wrap">
+              <span class="input-icon">📅</span>
+              <input id="travelDate" name="date" type="date"
+                     value="{{ tomorrow }}"
+                     min="{{ today }}" required />
+            </div>
+          </div>
+        </div>
+
+        <!-- 筛选选项 -->
+        <div class="filter-row">
+          <label class="toggle-label">
+            <input type="checkbox" id="sleeperOnly" />
+            <span class="toggle-text">仅含卧铺</span>
+          </label>
+          <label class="toggle-label">
+            <input type="checkbox" id="directOnly" />
+            <span class="toggle-text">仅直达</span>
+          </label>
+        </div>
+
+        <button type="submit" class="search-btn" id="searchBtn">
+          <span class="btn-text">查询夜间行程</span>
+          <span class="btn-loading hidden">⏳ 查询中…</span>
+        </button>
+      </form>
+    </section>
+
+    <!-- 警告提示 -->
+    <div id="warnings" class="warnings hidden"></div>
+
+    <!-- 错误提示 -->
+    <div id="errorBox" class="error-box hidden"></div>
+
+    <!-- 结果区 -->
+    <section id="results" class="results hidden">
+      <div class="results-header">
+        <h2>推荐行程 <span id="resultsCount" class="count-badge"></span></h2>
+        <p class="results-hint">按夜间覆盖比例与综合评分排序，得分越高越推荐</p>
+      </div>
+      <div id="planList" class="plan-list"></div>
+    </section>
+
+    <!-- 空状态 -->
+    <div id="emptyState" class="empty-state hidden">
+      <div class="empty-icon">🔍</div>
+      <p>未找到符合条件的夜间行程，可尝试取消"仅含卧铺"或"仅直达"筛选</p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>数据来源：12306 官方接口 &nbsp;·&nbsp; 仅供参考，以 12306 实时查询为准</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
