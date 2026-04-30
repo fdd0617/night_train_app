@@ -103,7 +103,7 @@ python -m night_train_app.run
 python night_train_app/run.py
 ```
 
-服务启动后访问：<http://127.0.0.1:5500>
+服务启动后访问：<http://127.0.0.1:5000>
 
 **方式二：通过 Flask CLI**
 
