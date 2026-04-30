@@ -51,7 +51,12 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
+# 编辑 .env，填入你的 OPENAI_API_KEY 等
 ```
+
+> 🔐 **安全提示**：`.env` 已在 [.gitignore](.gitignore) 中被排除，绝不会被推送到 GitHub。
+> 仓库里只提交占位用的 [.env.example](.env.example)，请确保**真实 key 只写在本地 `.env` 中**。
+> 启动时会自动通过 `python-dotenv` 加载该文件（无需手动 `source`）。
 
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
@@ -60,6 +65,32 @@ cp .env.example .env
 | `STATION_CACHE_PATH` | `station_names.json` | 站点名称缓存文件路径，留空则每次内存加载 |
 | `NIGHT_START_HOUR` | `21` | 夜间时段开始时刻（24h） |
 | `NIGHT_END_HOUR` | `8` | 夜间时段结束时刻（次日，24h） |
+| `OPENAI_API_KEY` | _无_ | 目的地攻略生成所需的 API Key，**未配置则不显示攻略卡片**（不影响行程查询） |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI 兼容服务地址，可改为 DeepSeek / OpenRouter / 通义 等 |
+| `OPENAI_MODEL` | `gpt-4o-mini` | 用于生成攻略的模型名 |
+| `DEST_CACHE_TTL` | `604800`（7 天） | 攻略内存缓存秒数 |
+| `DEST_TIMEOUT` | `30` | LLM 单次请求超时（秒） |
+
+#### 目的地攻略：接入其他兼容服务
+
+只需修改 `OPENAI_BASE_URL` 与 `OPENAI_MODEL` 两个环境变量，即可接入任意 OpenAI 兼容服务：
+
+```bash
+# DeepSeek
+export OPENAI_API_KEY=sk-xxx
+export OPENAI_BASE_URL=https://api.deepseek.com/v1
+export OPENAI_MODEL=deepseek-chat
+
+# 通义千问 DashScope（OpenAI 兼容模式）
+export OPENAI_API_KEY=sk-xxx
+export OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+export OPENAI_MODEL=qwen-plus
+
+# OpenRouter
+export OPENAI_API_KEY=sk-or-xxx
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+export OPENAI_MODEL=openai/gpt-4o-mini
+```
 
 ### 4. 启动服务
 
@@ -163,6 +194,37 @@ flask run --port 5000
 
 ---
 
+### `GET /api/destination`
+
+根据目的城市生成攻略（简介 / 当地美食 / 必游景点）。结果由 LLM 生成，进程内缓存 7 天。
+
+**参数**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `city` | string | 目的城市名或站名（自动剥离「站」「东」「西」「南」「北」等后缀） |
+
+**响应示例**
+
+```json
+{
+  "city": "上海",
+  "summary": "上海是中国最大的经济中心，融合江南水乡与国际都市风格…",
+  "foods": [
+    { "name": "生煎包",   "desc": "底脆汁多，本帮经典早餐。" },
+    { "name": "小笼包",   "desc": "薄皮多汁，南翔老字号最负盛名。" }
+  ],
+  "attractions": [
+    { "name": "外滩",     "desc": "黄浦江畔欣赏万国建筑群。" },
+    { "name": "豫园",     "desc": "明代古典园林，邻近老城隍庙。" }
+  ]
+}
+```
+
+未配置 `OPENAI_API_KEY` 或 LLM 调用失败时返回 `502` + `{"error": "..."}`，前端会静默降级，不影响行程查询。
+
+---
+
 ## 项目结构
 
 ```
@@ -181,7 +243,8 @@ night_train_app/
 │
 ├── services/
 │   ├── __init__.py
-│   └── recommendation.py      # 推荐引擎（评分算法 / 中转枚举 / 结果排序）
+│   ├── recommendation.py      # 推荐引擎（评分算法 / 中转枚举 / 结果排序）
+│   └── destination.py         # 目的地攻略生成（OpenAI 兼容 LLM + 内存缓存）
 │
 ├── static/
 │   ├── app.css                # 前端样式

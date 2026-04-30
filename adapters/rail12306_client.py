@@ -275,20 +275,50 @@ def query_trains(
         "leftTicketDTO.to_station": to_code,
         "purpose_codes": "ADULT",
     }
-    try:
-        resp = _get_with_retry(session, _TICKET_QUERY_URL, params=params, timeout=timeout)
-    except RuntimeError as exc:
-        raise RuntimeError(f"余票查询失败 [{from_code}->{to_code} {date}]：{exc}") from exc
 
-    if not resp.text.strip():
+    # 12306 偶发返回空响应或 HTML 风控页，遇到后刷新 Cookie 再重试一次
+    data = None
+    last_preview = ""
+    for attempt in range(1, 3):
+        try:
+            resp = _get_with_retry(
+                session, _TICKET_QUERY_URL, params=params, timeout=timeout
+            )
+        except RuntimeError as exc:
+            raise RuntimeError(
+                f"余票查询失败 [{from_code}->{to_code} {date}]：{exc}"
+            ) from exc
+
+        text = resp.text.strip()
+        if not text:
+            last_preview = "(空响应)"
+        else:
+            try:
+                data = resp.json()
+                break
+            except json.JSONDecodeError:
+                last_preview = text[:120].replace("\n", " ")
+
+        # 第一次失败 → 重新拿 Cookie 再来一次
+        if attempt == 1:
+            logger.warning(
+                "12306 返回非 JSON [%s->%s]：%s | 刷新 Cookie 重试…",
+                from_code, to_code, last_preview,
+            )
+            session = _make_session_with_cookies()
+            time.sleep(1.0)
+            continue
+
+        hint = (
+            "12306 触发限流/风控（返回 HTML）"
+            if last_preview.lstrip().startswith("<")
+            else "12306 返回非 JSON 响应"
+        )
         raise RuntimeError(
-            f"12306 返回空响应 [{from_code}->{to_code}]，可能需要刷新 Cookie"
+            f"{hint}，请稍后重试。预览：{last_preview}"
         )
 
-    try:
-        data = resp.json()
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"12306 响应 JSON 解析失败：{exc}") from exc
+    assert data is not None  # for type checkers
 
     # 12306 当前返回 httpstatus（整数），而非旧版 status（布尔）
     http_status = data.get("httpstatus") or data.get("status")

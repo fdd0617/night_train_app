@@ -1,0 +1,36 @@
+# ===== 敏感配置（绝对不要提交）=====
+.env
+.env.*
+!.env.example
+*.local
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ===== 虚拟环境 =====
+.venv/
+venv/
+env/
+ENV/
+
+# ===== 12306 站点缓存（运行时生成）=====
+station_names.json
+
+# ===== IDE / 系统 =====
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

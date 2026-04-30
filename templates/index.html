@@ -81,6 +81,24 @@
     <!-- 错误提示 -->
     <div id="errorBox" class="error-box hidden"></div>
 
+    <!-- 目的地攻略 -->
+    <section id="destinationCard" class="dest-card card hidden">
+      <div class="dest-header">
+        <div class="dest-title-wrap">
+          <span class="dest-icon">🧭</span>
+          <h3 id="destTitle">目的地攻略</h3>
+        </div>
+        <span id="destLoading" class="dest-loading hidden">⏳ 生成中…</span>
+      </div>
+      <div class="dest-tabs" id="destTabs">
+        <button type="button" data-tab="summary"     class="dest-tab active">简介</button>
+        <button type="button" data-tab="foods"       class="dest-tab">当地美食</button>
+        <button type="button" data-tab="attractions" class="dest-tab">必游景点</button>
+      </div>
+      <div id="destBody" class="dest-body"></div>
+      <div id="destError" class="dest-error hidden"></div>
+    </section>
+
     <!-- 结果区 -->
     <section id="results" class="results hidden">
       <div class="results-header">

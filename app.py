@@ -2,10 +2,20 @@
 import logging
 import os
 from datetime import date, timedelta
+from pathlib import Path
+
+# 启动时自动加载项目根目录的 .env（若文件或库不存在则静默跳过）
+try:
+    from dotenv import load_dotenv  # type: ignore
+
+    load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
+except ImportError:
+    pass
 
 from flask import Flask, jsonify, render_template, request
 
 from .adapters.rail12306_client import search_stations
+from .services.destination import get_guide
 from .services.recommendation import build_recommendations
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -134,6 +144,35 @@ def api_recommend():
         "warnings": warnings,
         "total": len(serialized),
     })
+
+
+@app.get("/api/destination")
+def api_destination():
+    """目的地攻略接口。
+
+    Query:
+        city: 目的城市/站名，如"上海"或"北京西"
+
+    Response 200:
+        {
+            "city": "上海",
+            "summary": "...",
+            "foods":       [{"name": "...", "desc": "..."}],
+            "attractions": [{"name": "...", "desc": "..."}]
+        }
+
+    Response 502:
+        {"error": "..."}
+    """
+    city = (request.args.get("city") or "").strip()
+    if not city:
+        return jsonify({"error": "缺少 city 参数"}), 400
+    try:
+        guide = get_guide(city)
+    except RuntimeError as exc:
+        logger.warning("目的地攻略生成失败 city=%s err=%s", city, exc)
+        return jsonify({"error": str(exc)}), 502
+    return jsonify(guide)
 
 
 def run():

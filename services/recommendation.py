@@ -265,7 +265,12 @@ def build_recommendations(
         direct_segs = query_trains(from_info.code, to_info.code, date, session=session)
         logger.info("直达车次 %d 趟", len(direct_segs))
     except RuntimeError as exc:
-        warnings.append(f"直达查询失败：{exc}")
+        msg = str(exc)
+        if "JSON" in msg or "限流" in msg or "风控" in msg or "空响应" in msg:
+            warnings.append("12306 当前繁忙或触发限流，部分车次可能未查询到，请几秒后重试")
+            logger.warning("直达查询失败（限流类）：%s", exc)
+        else:
+            warnings.append(f"直达查询失败：{exc}")
 
     plans: list[TripPlan] = [_make_direct_plan(s) for s in direct_segs]
 
