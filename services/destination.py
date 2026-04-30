@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import threading
 import time
@@ -26,12 +25,9 @@ from typing import Any
 
 import requests
 
-logger = logging.getLogger(__name__)
+from ..config import Config
 
-DEFAULT_BASE_URL = "https://api.openai.com/v1"
-DEFAULT_MODEL = "gpt-4o-mini"
-DEFAULT_TTL_SECONDS = 7 * 24 * 3600
-DEFAULT_TIMEOUT = 30
+logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = (
     "你是一名熟悉中国各地文化与旅游资源的专业导游。"
@@ -69,13 +65,6 @@ _cache: dict[str, tuple[dict[str, Any], float]] = {}
 _cache_lock = threading.Lock()
 
 
-def _ttl_seconds() -> int:
-    try:
-        return int(os.environ.get("DEST_CACHE_TTL", DEFAULT_TTL_SECONDS))
-    except ValueError:
-        return DEFAULT_TTL_SECONDS
-
-
 def _cache_get(key: str) -> dict[str, Any] | None:
     with _cache_lock:
         item = _cache.get(key)
@@ -90,7 +79,7 @@ def _cache_get(key: str) -> dict[str, Any] | None:
 
 def _cache_set(key: str, payload: dict[str, Any]) -> None:
     with _cache_lock:
-        _cache[key] = (payload, time.time() + _ttl_seconds())
+        _cache[key] = (payload, time.time() + Config.DEST_CACHE_TTL)
 
 
 # ─────────────────────────────────────────────
@@ -145,16 +134,13 @@ def _normalize_payload(city: str, raw: dict[str, Any]) -> dict[str, Any]:
 # ─────────────────────────────────────────────
 
 def _call_llm(city: str) -> dict[str, Any]:
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    api_key = Config.OPENAI_API_KEY.strip()
     if not api_key:
         raise RuntimeError("未配置 OPENAI_API_KEY，无法生成目的地攻略")
 
-    base_url = os.environ.get("OPENAI_BASE_URL", DEFAULT_BASE_URL).strip().rstrip("/")
-    model = os.environ.get("OPENAI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
-    try:
-        timeout = int(os.environ.get("DEST_TIMEOUT", DEFAULT_TIMEOUT))
-    except ValueError:
-        timeout = DEFAULT_TIMEOUT
+    base_url = Config.OPENAI_BASE_URL.strip().rstrip("/")
+    model = Config.OPENAI_MODEL.strip() or "gpt-4o-mini"
+    timeout = Config.DEST_TIMEOUT
 
     url = f"{base_url}/chat/completions"
     headers = {

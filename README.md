@@ -112,6 +112,28 @@ export FLASK_APP=night_train_app.app
 flask run --port 5000
 ```
 
+**方式三：生产部署（gunicorn）**
+
+```bash
+# 在 Python实战项目/ 的上级目录执行
+gunicorn 'night_train_app.app:app' \
+  --bind 0.0.0.0:5000 \
+  --workers 4 \
+  --timeout 60 \
+  --access-logfile -
+```
+
+**方式四：Docker**
+
+```bash
+docker build -t night-train-app .
+docker run --rm -p 5000:5000 \
+  --env-file .env \
+  --name night-train-app \
+  night-train-app
+# 健康检查：docker ps 会显示 (healthy)
+```
+
 ---
 
 ## API 文档
@@ -191,6 +213,29 @@ flask run --port 5000
   ]
 }
 ```
+
+---
+
+### `GET /api/health`
+
+健康检查端点，用于负载均衡 / 容器编排的存活探针。
+
+**响应示例（200）**
+
+```json
+{
+  "status": "ok",
+  "time": "2026-04-30T18:00:00+00:00",
+  "version": "1.0.0",
+  "checks": {
+    "stations_loaded": true,
+    "station_count": 3365,
+    "llm_configured": true
+  }
+}
+```
+
+站点列表加载失败时返回 `503 degraded`。
 
 ---
 

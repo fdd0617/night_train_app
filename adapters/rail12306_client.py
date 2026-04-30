@@ -19,6 +19,7 @@ from functools import lru_cache
 
 import requests
 
+from ..config import Config
 from ..models import TrainSegment, StationInfo
 
 logger = logging.getLogger(__name__)
@@ -45,9 +46,9 @@ _QUERY_HEADERS = {
     "X-Requested-With": "XMLHttpRequest",
 }
 
-_DEFAULT_TIMEOUT = 15
-_MAX_RETRIES = 3
-_RETRY_DELAY = 1.5
+_DEFAULT_TIMEOUT = Config.RAIL_TIMEOUT
+_MAX_RETRIES = Config.RAIL_MAX_RETRIES
+_RETRY_DELAY = Config.RAIL_RETRY_DELAY
 
 _TRAIN_TYPE_MAP = {
     "G": "高铁",
@@ -148,22 +149,88 @@ def load_stations() -> dict[str, StationInfo]:
     return stations
 
 
-def search_stations(keyword: str) -> list[StationInfo]:
-    """模糊搜索站点，支持中文站名或拼音首字母。返回候选列表（去重）。"""
+@lru_cache(maxsize=1)
+def _station_index() -> dict[str, object]:
+    """
+    构建站点搜索索引，仅在首次 search_stations 时初始化一次。
+
+    - all:             去重后的 StationInfo 列表，子串 fallback 用
+    - by_name_first:   {中文首字 -> StationInfo 列表}，加速以汉字开头的查询
+    - by_pinyin_first: {拼音首字母小写 -> StationInfo 列表}，加速拼音查询
+    - lower_pinyin:    每条 StationInfo 对应的小写拼音，避免热路径上反复 .lower()
+    """
     stations = load_stations()
-    keyword_lower = keyword.lower()
-    seen_codes: set[str] = set()
-    results: list[StationInfo] = []
-    for key, info in stations.items():
-        if info.code in seen_codes:
+    seen: set[str] = set()
+    unique: list[StationInfo] = []
+    lower_pinyin: dict[str, str] = {}
+    for info in stations.values():
+        if info.code in seen:
             continue
-        if (
-            keyword in key
-            or keyword_lower in info.pinyin.lower()
-        ):
-            seen_codes.add(info.code)
-            results.append(info)
-    return results[:10]
+        seen.add(info.code)
+        unique.append(info)
+        lower_pinyin[info.code] = (info.pinyin or "").lower()
+
+    by_name_first: dict[str, list[StationInfo]] = {}
+    by_pinyin_first: dict[str, list[StationInfo]] = {}
+    for info in unique:
+        if info.name:
+            by_name_first.setdefault(info.name[0], []).append(info)
+        py = lower_pinyin[info.code]
+        if py:
+            by_pinyin_first.setdefault(py[0], []).append(info)
+
+    return {
+        "all": unique,
+        "by_name_first": by_name_first,
+        "by_pinyin_first": by_pinyin_first,
+        "lower_pinyin": lower_pinyin,
+    }
+
+
+def search_stations(keyword: str, limit: int = 10) -> list[StationInfo]:
+    """
+    模糊搜索站点，支持中文站名或拼音首字母。返回候选列表（去重，最多 limit 条）。
+
+    通过预建的首字索引把热路径从 O(N) 降到 O(桶大小)，对站点级数据基本是 O(1)。
+    """
+    if not keyword:
+        return []
+
+    idx = _station_index()
+    head = keyword[0]
+    keyword_lower = keyword.lower()
+    head_lower = head.lower()
+    lower_pinyin: dict[str, str] = idx["lower_pinyin"]  # type: ignore[assignment]
+
+    # 候选集：根据首字符判断走中文桶 / 拼音桶
+    candidates: list[StationInfo] = []
+    if head.isascii():
+        candidates.extend(idx["by_pinyin_first"].get(head_lower, []))  # type: ignore[union-attr]
+    else:
+        candidates.extend(idx["by_name_first"].get(head, []))  # type: ignore[union-attr]
+
+    seen: set[str] = set()
+    results: list[StationInfo] = []
+
+    def _push(info: StationInfo) -> bool:
+        if info.code in seen:
+            return False
+        seen.add(info.code)
+        results.append(info)
+        return len(results) >= limit
+
+    for info in candidates:
+        if keyword in info.name or keyword_lower in lower_pinyin[info.code]:
+            if _push(info):
+                return results
+
+    # 候选不够时退回全量子串扫描（一般只对少见输入命中）
+    if len(results) < limit:
+        for info in idx["all"]:  # type: ignore[union-attr]
+            if keyword in info.name or keyword_lower in lower_pinyin[info.code]:
+                if _push(info):
+                    break
+    return results
 
 
 def resolve_station(name: str) -> Optional[StationInfo]:

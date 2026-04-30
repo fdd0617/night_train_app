@@ -8,41 +8,86 @@
   4. 排序后返回 Top N
 """
 import logging
+import threading
+import time
 import concurrent.futures
+from collections import OrderedDict
 from typing import Optional
 
+from ..config import Config
 from ..models import TrainSegment, TripPlan
 from ..adapters.rail12306_client import query_trains, resolve_station, _make_session_with_cookies
 
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────
-# 可配置权重（后续可挪至配置文件）
-# ─────────────────────────────────────────────
-NIGHT_START_HOUR = 21     # 夜间开始时刻（含）
-NIGHT_END_HOUR = 8        # 夜间结束时刻（不含，次日）
-MORNING_START_HOUR = 6    # 早晨到达开始
-MORNING_END_HOUR = 10     # 早晨到达结束
+# 模块级别名（保持向后兼容 + 测试可读性）
+NIGHT_START_HOUR = Config.NIGHT_START_HOUR
+NIGHT_END_HOUR = Config.NIGHT_END_HOUR
+MORNING_START_HOUR = Config.MORNING_START_HOUR
+MORNING_END_HOUR = Config.MORNING_END_HOUR
+WEIGHT_NIGHT_RATIO = Config.WEIGHT_NIGHT_RATIO
+WEIGHT_MORNING_ARRIVE = Config.WEIGHT_MORNING_ARRIVE
+WEIGHT_DURATION = Config.WEIGHT_DURATION
+WEIGHT_TRANSFER_PENALTY = Config.WEIGHT_TRANSFER_PENALTY
+WEIGHT_SLEEPER_BONUS = Config.WEIGHT_SLEEPER_BONUS
 
-WEIGHT_NIGHT_RATIO = 0.40    # 夜间占比权重
-WEIGHT_MORNING_ARRIVE = 0.25 # 早晨到达奖励权重
-WEIGHT_DURATION = 0.20       # 总耗时权重（越短越好）
-WEIGHT_TRANSFER_PENALTY = 0.10  # 中转惩罚权重
-WEIGHT_SLEEPER_BONUS = 0.05  # 卧铺奖励权重
-
-# 中转候选站（覆盖全国主要枢纽）
-_TRANSFER_HUBS = [
+# 中转候选站（覆盖全国主要枢纽，dict.fromkeys 保序去重以防手抖重复）
+_TRANSFER_HUBS = list(dict.fromkeys([
     "郑州", "武汉", "成都", "重庆", "西安", "南京",
     "杭州", "济南", "沈阳", "哈尔滨", "长沙", "合肥",
     "南昌", "石家庄", "太原", "呼和浩特", "兰州", "乌鲁木齐",
-    "南宁", "贵阳", "昆明", "福州", "厦门", "济南",
+    "南宁", "贵阳", "昆明", "福州", "厦门",
     "徐州", "株洲", "宝鸡", "湛江",
-]
+]))
 
-# 中转约束
-MIN_TRANSFER_WAIT_MINUTES = 60     # 最短换乘等待时间（分钟）
-MAX_TRANSFER_WAIT_MINUTES = 480    # 最长换乘等待时间（8小时）
-MAX_RESULTS = 15                   # 最终推荐数量上限
+# 中转约束（来自 Config）
+MIN_TRANSFER_WAIT_MINUTES = Config.MIN_TRANSFER_WAIT_MINUTES
+MAX_TRANSFER_WAIT_MINUTES = Config.MAX_TRANSFER_WAIT_MINUTES
+MAX_RESULTS = Config.MAX_RESULTS
+
+
+# ─────────────────────────────────────────────
+# 查询结果 TTL 缓存（避免短时间内重复打 12306）
+# ─────────────────────────────────────────────
+_query_cache: OrderedDict[tuple, tuple[tuple[list[TripPlan], list[str]], float]] = (
+    OrderedDict()
+)
+_query_cache_lock = threading.Lock()
+
+
+def _cache_key(
+    from_city: str, to_city: str, date: str,
+    allow_transfer: bool, sleeper_only: bool, direct_only: bool,
+) -> tuple:
+    return (from_city, to_city, date, allow_transfer, sleeper_only, direct_only)
+
+
+def _cache_get(key: tuple):
+    with _query_cache_lock:
+        item = _query_cache.get(key)
+        if item is None:
+            return None
+        result, expire_ts = item
+        if expire_ts < time.time():
+            _query_cache.pop(key, None)
+            return None
+        # LRU 行为：被命中后挪到末尾
+        _query_cache.move_to_end(key)
+        return result
+
+
+def _cache_put(key: tuple, value) -> None:
+    with _query_cache_lock:
+        _query_cache[key] = (value, time.time() + Config.QUERY_CACHE_TTL)
+        _query_cache.move_to_end(key)
+        while len(_query_cache) > Config.QUERY_CACHE_SIZE:
+            _query_cache.popitem(last=False)
+
+
+def clear_query_cache() -> None:
+    """供测试 / 管理接口手动清空查询缓存。"""
+    with _query_cache_lock:
+        _query_cache.clear()
 
 
 # ─────────────────────────────────────────────
@@ -58,28 +103,29 @@ def _time_to_minutes(t: str) -> int:
 def _night_overlap_minutes(
     depart_time: str,
     duration_minutes: int,
-    night_start: int = NIGHT_START_HOUR * 60,
-    night_end: int = (NIGHT_END_HOUR + 24) * 60,  # 跨日处理
 ) -> int:
     """
-    计算一段列车行程中处于夜间时段（21:00-08:00）的分钟数。
-    夜间跨越多夜时按每夜独立叠加。
+    计算一段列车行程中处于夜间时段（NIGHT_START_HOUR ~ 次日 NIGHT_END_HOUR）的分钟数。
+
+    实现：从出发那一天 00:00 开始，按天枚举每一晚的夜间窗口
+    [day_start + NIGHT_START_HOUR*60,  day_start + (NIGHT_END_HOUR + 24)*60]，
+    与行程区间 [start, end] 求交集叠加，直到窗口起点超过 end。
     """
+    if duration_minutes <= 0:
+        return 0
     start = _time_to_minutes(depart_time)
     end = start + duration_minutes
-    total_night = 0
-    # 按24小时窗口滚动计算
-    offset = 0
-    while offset < duration_minutes:
-        day_start = (start // 1440) * 1440
-        ns = day_start + (NIGHT_START_HOUR * 60)
-        ne = day_start + ((NIGHT_END_HOUR + 24) * 60)
-        seg_start = start + offset
-        seg_end = min(start + duration_minutes, start + offset + 1440)
-        overlap = max(0, min(seg_end, ne) - max(seg_start, ns))
-        total_night += overlap
-        offset += 1440
-    return min(total_night, duration_minutes)
+    total = 0
+    day_start = (start // 1440) * 1440
+    while True:
+        ns = day_start + NIGHT_START_HOUR * 60
+        ne = day_start + (NIGHT_END_HOUR + 24) * 60
+        if ns >= end:
+            break
+        overlap = max(0, min(end, ne) - max(start, ns))
+        total += overlap
+        day_start += 1440
+    return min(total, duration_minutes)
 
 
 def _night_ratio(depart_time: str, duration_minutes: int) -> float:
@@ -245,6 +291,15 @@ def build_recommendations(
     :param direct_only:    是否仅返回直达方案
     :return: (推荐行程列表, 警告信息列表)
     """
+    # 命中缓存直接返回（避免短时间内重复打 12306）
+    cache_key = _cache_key(
+        from_city, to_city, date, allow_transfer, sleeper_only, direct_only
+    )
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        logger.info("查询命中缓存：%s → %s [%s]", from_city, to_city, date)
+        return cached
+
     warnings: list[str] = []
 
     from_info = resolve_station(from_city)
@@ -256,13 +311,15 @@ def build_recommendations(
 
     logger.info("查询 %s(%s) → %s(%s) [%s]", from_city, from_info.code, to_city, to_info.code, date)
 
-    # 创建带 Cookie 的 Session，复用于所有查询
-    session = _make_session_with_cookies()
+    # 主线程使用独立 Session 完成直达查询
+    main_session = _make_session_with_cookies()
 
     # 1. 直达
     direct_segs: list[TrainSegment] = []
     try:
-        direct_segs = query_trains(from_info.code, to_info.code, date, session=session)
+        direct_segs = query_trains(
+            from_info.code, to_info.code, date, session=main_session
+        )
         logger.info("直达车次 %d 趟", len(direct_segs))
     except RuntimeError as exc:
         msg = str(exc)
@@ -274,10 +331,10 @@ def build_recommendations(
 
     plans: list[TripPlan] = [_make_direct_plan(s) for s in direct_segs]
 
-    # 2. 中转
+    # 2. 中转：每个工作线程独立 Session，避免共享状态
     if allow_transfer and not direct_only:
         transfer_plans = _build_transfer_plans(
-            from_info.code, to_info.code, date, warnings, session
+            from_info.code, to_info.code, date, warnings
         )
         plans.extend(transfer_plans)
 
@@ -295,7 +352,9 @@ def build_recommendations(
     if len(result) < 5:
         result += other_plans[: max(0, 5 - len(result))]
 
-    return result, warnings
+    payload = (result, warnings)
+    _cache_put(cache_key, payload)
+    return payload
 
 
 def _build_transfer_plans(
@@ -303,22 +362,35 @@ def _build_transfer_plans(
     to_code: str,
     date: str,
     warnings: list[str],
-    session=None,
 ) -> list[TripPlan]:
-    """并行查询各中转站方案，共享同一 Session。"""
-    import requests as _req
+    """
+    并行查询各中转站方案。
+
+    线程安全：requests.Session 不是线程安全的（cookies / 连接池等内部状态会被并发写
+    入），因此每个工作线程通过 threading.local() 懒创建并复用一个独立 Session。
+    同一线程内 leg1+leg2 可继续复用同一 Session 与 Cookie。
+    """
     plans: list[TripPlan] = []
+    thread_local = threading.local()
+
+    def _get_session():
+        sess = getattr(thread_local, "session", None)
+        if sess is None:
+            sess = _make_session_with_cookies()
+            thread_local.session = sess
+        return sess
 
     def _query_hub(hub_name: str) -> list[TripPlan]:
         hub = resolve_station(hub_name)
         if hub is None:
             return []
+        sess = _get_session()
         hub_plans: list[TripPlan] = []
         try:
-            leg1 = query_trains(from_code, hub.code, date, session=session)
+            leg1 = query_trains(from_code, hub.code, date, session=sess)
             if not leg1:
                 return []
-            leg2 = query_trains(hub.code, to_code, date, session=session)
+            leg2 = query_trains(hub.code, to_code, date, session=sess)
             if not leg2:
                 return []
         except RuntimeError:
@@ -331,7 +403,9 @@ def _build_transfer_plans(
                     hub_plans.append(plan)
         return hub_plans
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=Config.TRANSFER_MAX_WORKERS
+    ) as pool:
         futures = {pool.submit(_query_hub, hub): hub for hub in _TRANSFER_HUBS}
         for future in concurrent.futures.as_completed(futures, timeout=30):
             hub = futures[future]

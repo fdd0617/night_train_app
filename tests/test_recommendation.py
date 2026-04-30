@@ -159,5 +159,60 @@ class TestScoreOrdering(unittest.TestCase):
         self.assertGreater(night_plan.score, day_plan.score)
 
 
+class TestNightRatioMultiNight(unittest.TestCase):
+    """跨多夜超长行程的夜间占比边界用例"""
+
+    def test_two_nights_30h(self):
+        # 21:00 出发，30 小时（1800 分钟）→ 跨 2 个完整夜间窗口 + 1 段日间
+        # 夜间窗口为 21:00-08:00（每夜 11 小时 = 660 分钟）
+        # 行程：D1 21:00 → D2 21:00 → D3 03:00
+        #   覆盖：D1 21:00-D2 08:00 (11h, 全部夜间) + D2 08:00-D2 21:00 (13h 日间)
+        #         + D2 21:00-D3 03:00 (6h, 全部夜间)
+        ratio = _night_ratio("21:00", 1800)
+        # 总夜间 = 11h + 6h = 17h；占比 17/30 ≈ 0.567
+        self.assertGreater(ratio, 0.45)
+        self.assertLess(ratio, 0.65)
+
+    def test_three_nights_60h(self):
+        # 60h 行程横跨 3 夜，理论夜间占比 ≈ (11*3)/60 = 0.55 上下
+        ratio = _night_ratio("22:00", 60 * 60)
+        self.assertGreater(ratio, 0.4)
+        self.assertLess(ratio, 0.7)
+
+    def test_ratio_capped_at_one(self):
+        # 即使持续多夜，比例也不应超过 1.0
+        ratio = _night_ratio("21:00", 48 * 60)
+        self.assertLessEqual(ratio, 1.0)
+
+    def test_zero_duration(self):
+        # 0 分钟行程不应除零
+        self.assertEqual(_night_ratio("22:00", 0), 0.0)
+
+
+class TestPlanAsDict(unittest.TestCase):
+    """TripPlan / TrainSegment 序列化测试"""
+
+    def test_direct_plan_dict(self):
+        seg = _make_seg(depart_time="22:00", arrive_time="06:00", duration_minutes=480)
+        plan = _make_direct_plan(seg)
+        d = plan.as_dict()
+        self.assertTrue(d["is_direct"])
+        self.assertIsNone(d["transfer_station"])
+        self.assertEqual(d["depart_time"], "22:00")
+        self.assertEqual(d["arrive_time"], "06:00")
+        self.assertEqual(len(d["segments"]), 1)
+        # round 字段
+        self.assertIsInstance(d["score"], float)
+        self.assertIsInstance(d["night_ratio"], float)
+
+    def test_segment_dict_keys(self):
+        seg = _make_seg()
+        d = seg.as_dict()
+        for key in ("train_no", "train_type", "from_station", "to_station",
+                    "depart_time", "arrive_time", "depart_date", "arrive_date",
+                    "duration_minutes", "has_sleeper"):
+            self.assertIn(key, d)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

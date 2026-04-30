@@ -1,0 +1,32 @@
+.git
+.gitignore
+.venv
+venv
+env
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# 敏感信息：绝不进镜像
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+
+# 测试与构建产物
+dist
+build
+*.egg-info
+htmlcov
+.coverage
+station_names.json

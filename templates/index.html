@@ -1,15 +1,21 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>夜行列车 · 行程推荐</title>
+  <meta name="theme-color" content="#0f1117" />
+  <meta name="description" content="基于 12306 数据智能推荐适合夜间出行的卧铺列车方案" />
+  <link rel="manifest" href="/static/manifest.webmanifest" />
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/static/icon.svg" />
   <link rel="stylesheet" href="/static/app.css" />
 </head>
 <body>
   <!-- 顶部 Hero -->
   <header class="hero">
     <div class="hero-inner">
+      <button type="button" id="themeToggle" class="theme-toggle" title="切换主题">☀️</button>
       <div class="hero-icon">🌙</div>
       <h1>夜行列车推荐</h1>
       <p class="hero-sub">假期出行·用卧铺代替酒店，边睡觉边赶路</p>
@@ -66,13 +72,35 @@
             <input type="checkbox" id="directOnly" />
             <span class="toggle-text">仅直达</span>
           </label>
+          <label class="toggle-label" title="一次查询连续多日，找出最佳出发日">
+            <input type="checkbox" id="multiDay" />
+            <span class="toggle-text">连续 7 日比价</span>
+          </label>
         </div>
 
-        <button type="submit" class="search-btn" id="searchBtn">
-          <span class="btn-text">查询夜间行程</span>
-          <span class="btn-loading hidden">⏳ 查询中…</span>
-        </button>
+        <div class="action-row">
+          <button type="submit" class="search-btn" id="searchBtn">
+            <span class="btn-text">查询夜间行程</span>
+            <span class="btn-loading hidden">⏳ 查询中…</span>
+          </button>
+          <button type="button" class="secondary-btn" id="favoriteBtn"
+                  title="收藏当前路线"
+                  onclick="window.NTR && window.NTR.favoriteCurrent()">⭐ 收藏</button>
+          <button type="button" class="secondary-btn" id="shareBtn"
+                  title="复制可分享的查询链接"
+                  onclick="navigator.clipboard?.writeText(location.href).then(() => this.textContent='✓ 已复制').catch(()=>{}); setTimeout(()=>this.textContent='🔗 分享',1500);">🔗 分享</button>
+        </div>
       </form>
+    </section>
+
+    <!-- 收藏路线 -->
+    <section id="favSection" class="fav-section card">
+      <div class="fav-header">
+        <span class="fav-title">⭐ 我的收藏</span>
+        <span class="fav-hint">点击一键查询</span>
+      </div>
+      <ul id="favList" class="fav-list"></ul>
+      <div id="favEmpty" class="fav-empty hidden">还没有收藏路线，点表单上方的「⭐ 收藏」按钮就能加进来</div>
     </section>
 
     <!-- 警告提示 -->
@@ -99,6 +127,15 @@
       <div id="destError" class="dest-error hidden"></div>
     </section>
 
+    <!-- 多日查询 -->
+    <section id="multiDayCard" class="multi-day-card card hidden">
+      <div class="md-card-head">
+        <h3>📊 连续 7 日最佳出发对比</h3>
+        <p class="md-hint">每日最佳夜行方案，绿色标记为综合评分最高</p>
+      </div>
+      <ul id="multiDayList" class="md-list"></ul>
+    </section>
+
     <!-- 结果区 -->
     <section id="results" class="results hidden">
       <div class="results-header">
@@ -120,5 +157,13 @@
   </footer>
 
   <script src="/static/app.js"></script>
+  <script>
+    // 注册 Service Worker（PWA），失败/不支持时静默
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>

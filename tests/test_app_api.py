@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 from night_train_app.app import app
 from night_train_app.models import TrainSegment, StationInfo
+from night_train_app.services.recommendation import clear_query_cache
 
 
 def _fake_resolve(name: str):
@@ -43,6 +44,10 @@ class TestAPIValidation(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
         app.config["TESTING"] = True
+        # 测试环境关闭限流，避免误中
+        app.config["RATELIMIT_ENABLED"] = False
+        # 各 case 之间互不污染：清空 build_recommendations 的结果缓存
+        clear_query_cache()
 
     def test_missing_from(self):
         res = self.client.post("/api/recommend",
