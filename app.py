@@ -13,6 +13,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1MB
 
 
 # ─────────────────────────────────────────────
@@ -120,6 +121,8 @@ def api_station_search():
     keyword = request.args.get("q", "").strip()
     if not keyword:
         return jsonify([])
+    if len(keyword) > 30:
+        return jsonify({"error": "搜索关键词过长"}), 400
     try:
         results = search_stations(keyword)
     except RuntimeError as exc:
@@ -158,6 +161,8 @@ def api_recommend():
 
     if not from_city or not to_city:
         return jsonify({"error": "出发地和目的地不能为空"}), 400
+    if len(from_city) > 50 or len(to_city) > 50:
+        return jsonify({"error": "站名过长"}), 400
     if not travel_date:
         return jsonify({"error": "请选择出发日期"}), 400
 
@@ -215,13 +220,16 @@ def api_recommend_multi_day():
     start_date = (body.get("date") or "").strip()
     sleeper_only = bool(body.get("sleeper_only", False))
     direct_only = bool(body.get("direct_only", False))
-    days_n = min(
-        max(int(body.get("days") or Config.MULTI_DAY_MAX_DAYS), 1),
-        Config.MULTI_DAY_MAX_DAYS,
-    )
+    try:
+        raw_days = int(body.get("days") or Config.MULTI_DAY_MAX_DAYS)
+    except (ValueError, TypeError):
+        raw_days = Config.MULTI_DAY_MAX_DAYS
+    days_n = min(max(raw_days, 1), Config.MULTI_DAY_MAX_DAYS)
 
     if not from_city or not to_city:
         return jsonify({"error": "出发地和目的地不能为空"}), 400
+    if len(from_city) > 50 or len(to_city) > 50:
+        return jsonify({"error": "站名过长"}), 400
     if not start_date:
         return jsonify({"error": "请选择起始日期"}), 400
     try:
@@ -279,6 +287,8 @@ def api_destination():
     city = (request.args.get("city") or "").strip()
     if not city:
         return jsonify({"error": "缺少 city 参数"}), 400
+    if len(city) > 50:
+        return jsonify({"error": "城市名称过长"}), 400
     try:
         guide = get_guide(city)
     except RuntimeError as exc:

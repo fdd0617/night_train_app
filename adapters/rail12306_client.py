@@ -385,7 +385,8 @@ def query_trains(
             f"{hint}，请稍后重试。预览：{last_preview}"
         )
 
-    assert data is not None  # for type checkers
+    if data is None:
+        raise RuntimeError("12306 返回数据为空，请稍后重试")
 
     # 12306 当前返回 httpstatus（整数），而非旧版 status（布尔）
     http_status = data.get("httpstatus") or data.get("status")

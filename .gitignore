@@ -34,3 +34,13 @@ station_names.json
 *.swo
 .DS_Store
 Thumbs.db
+
+# ===== 测试 / 覆盖率 =====
+htmlcov/
+.coverage
+
+# ===== 日志 =====
+*.log
+
+# ===== Claude Code =====
+.claude/

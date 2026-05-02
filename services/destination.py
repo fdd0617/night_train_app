@@ -223,6 +223,14 @@ def get_guide(city_raw: str) -> dict[str, Any]:
     city = normalize_city(city_raw)
     if not city:
         raise RuntimeError("城市名称不能为空")
+    if len(city) > 50:
+        raise RuntimeError("城市名称过长")
+    if not re.match(r'^[一-鿿\w]+$', city):
+        raise RuntimeError("城市名称包含非法字符")
+    if len(city) > 50:
+        raise RuntimeError("城市名称过长")
+    if not re.match(r'^[一-鿿\w]+$', city):
+        raise RuntimeError("城市名称包含非法字符")
 
     cached = _cache_get(city)
     if cached is not None:
