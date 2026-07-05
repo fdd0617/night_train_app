@@ -1,13 +1,13 @@
 {
   "name": "夜行列车推荐",
   "short_name": "夜行列车",
-  "description": "基于 12306 数据智能推荐适合夜间出行的卧铺列车方案",
+  "description": "基于 12306 实时数据筛选适合夜间出行的列车方案",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0f1117",
-  "theme_color": "#0f1117",
+  "background_color": "#f5f7fb",
+  "theme_color": "#f5f7fb",
   "lang": "zh-CN",
   "icons": [
     {

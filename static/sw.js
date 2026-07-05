@@ -6,7 +6,7 @@
  *   - 文档 HTML（/）           ：network-first，离线 fallback 缓存
  *   - API（/api/*）            ：永不缓存（实时数据）
  */
-const CACHE_NAME = 'ntr-static-v1';
+const CACHE_NAME = 'ntr-static-v2';
 const STATIC_ASSETS = [
   '/',
   '/static/app.css',

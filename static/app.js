@@ -69,7 +69,7 @@
     apply(t) {
       document.documentElement.dataset.theme = t;
       if (dom.themeToggle) {
-        dom.themeToggle.textContent = t === 'light' ? '🌙' : '☀️';
+        dom.themeToggle.textContent = t === 'light' ? '暗' : '亮';
         dom.themeToggle.title = t === 'light' ? '切换到深色模式' : '切换到浅色模式';
       }
     },
@@ -248,7 +248,7 @@
   // ─────────────────────────────────────────────
   // 渲染
   // ─────────────────────────────────────────────
-  const REASON_ICONS = ['🌙', '☀️', '⏱️', '🚉', '🛏️'];
+  const REASON_MARKS = ['夜', '晨', '时', '转', '卧'];
 
   function computeWaitMinutes(s1, s2) {
     const arr = new Date(`${s1.arrive_date}T${s1.arrive_time}:00`);
@@ -297,7 +297,7 @@
           <div class="plan-line">
             <div class="line-dot"></div>
             <div class="line-bar"></div>
-            <div class="line-arrow">▶</div>
+            <div class="line-arrow"></div>
           </div>
           <div class="plan-duration">${fmtMinutes(s1.duration_minutes)}</div>
         </div>
@@ -305,7 +305,7 @@
           <div class="plan-transfer-badge">换乘</div>
           <div class="plan-time-pair">
             <span class="plan-time-small">${escapeHTML(s1.arrive_time)}</span>
-            <span class="plan-time-sep">→</span>
+            <span class="plan-time-sep">-</span>
             <span class="plan-time-small">${escapeHTML(s2.depart_time)}</span>
           </div>
           <div class="plan-station">${escapeHTML(s1.to_station)}</div>
@@ -316,7 +316,7 @@
           <div class="plan-line">
             <div class="line-dot"></div>
             <div class="line-bar"></div>
-            <div class="line-arrow">▶</div>
+            <div class="line-arrow"></div>
           </div>
           <div class="plan-duration">${fmtMinutes(s2.duration_minutes)}</div>
         </div>
@@ -331,9 +331,9 @@
   function buildTags(plan) {
     const tags = [];
     const pct = nightPct(plan.night_ratio);
-    if (pct > 0)              tags.push(`<span class="tag tag-night">🌙 夜间占比 ${pct}%</span>`);
-    if (plan.arrives_morning) tags.push(`<span class="tag tag-morning">☀️ 早晨到达</span>`);
-    if (plan.has_sleeper)     tags.push(`<span class="tag tag-sleeper">🛏️ 有卧铺</span>`);
+    if (pct > 0)              tags.push(`<span class="tag tag-night">夜间占比 ${pct}%</span>`);
+    if (plan.arrives_morning) tags.push(`<span class="tag tag-morning">早晨到达</span>`);
+    if (plan.has_sleeper)     tags.push(`<span class="tag tag-sleeper">有卧铺</span>`);
     if (plan.is_direct)       tags.push(`<span class="tag tag-direct">直达</span>`);
     tags.push(`<span class="tag tag-score">综合评分 ${(plan.score * 100).toFixed(0)}</span>`);
     return tags.join('');
@@ -341,7 +341,7 @@
 
   function buildReasons(reasons) {
     return reasons.map((r, i) =>
-      `<div class="reason-item"><span class="reason-icon">${REASON_ICONS[i] || '·'}</span>${escapeHTML(r)}</div>`
+      `<div class="reason-item"><span class="reason-icon">${REASON_MARKS[i] || ''}</span>${escapeHTML(r)}</div>`
     ).join('');
   }
 
@@ -384,7 +384,7 @@
         if (data.city) dom.destTitle.textContent = `${data.city} · 目的地攻略`;
         renderTab(currentTab);
       } catch (err) {
-        dom.destError.textContent = `📭 暂时无法生成 ${city} 的攻略：${err.message}`;
+        dom.destError.textContent = `暂时无法生成 ${city} 的攻略：${err.message}`;
         dom.destError.classList.remove('hidden');
       } finally {
         dom.destLoading.classList.add('hidden');
@@ -409,12 +409,10 @@
         dom.destBody.innerHTML = `<div class="dest-empty">暂无相关推荐</div>`;
         return;
       }
-      const icon = tab === 'foods' ? '🍜' : '🏛️';
       dom.destBody.innerHTML = `
         <ul class="dest-list">
           ${list.map((item) => `
             <li class="dest-item">
-              <span class="dest-item-icon">${icon}</span>
               <div class="dest-item-text">
                 <div class="dest-item-name">${escapeHTML(item.name || '')}</div>
                 ${item.desc ? `<div class="dest-item-desc">${escapeHTML(item.desc)}</div>` : ''}
@@ -451,7 +449,7 @@
       dom.favList.innerHTML = list.map((f) => `
         <li class="fav-item" data-id="${escapeHTML(f.id)}">
           <button type="button" class="fav-apply" data-from="${escapeHTML(f.from)}" data-to="${escapeHTML(f.to)}">
-            ⭐ ${escapeHTML(f.from)} → ${escapeHTML(f.to)}
+            ${escapeHTML(f.from)} - ${escapeHTML(f.to)}
           </button>
           <button type="button" class="fav-remove" title="移除收藏" data-id="${escapeHTML(f.id)}">×</button>
         </li>
@@ -543,28 +541,28 @@
       try {
         if (q.multi_day) {
           await runMultiDay(q);
-          return;
+        } else {
+          const { ok, status, data } = await API.recommend(q);
+          if (!ok) {
+            showError(data.error || `请求失败（${status}）`);
+          } else {
+            if (data.warnings?.length) {
+              dom.warningsEl.textContent = '提示：' + data.warnings.join('；');
+              dom.warningsEl.classList.remove('hidden');
+            }
+            if (!data.plans?.length) {
+              dom.emptyState.classList.remove('hidden');
+            } else {
+              renderResults(data.plans);
+            }
+          }
         }
-        const { ok, status, data } = await API.recommend(q);
-        if (!ok) {
-          showError(data.error || `请求失败（${status}）`);
-          return;
-        }
-        if (data.warnings?.length) {
-          dom.warningsEl.textContent = '⚠️ ' + data.warnings.join('；');
-          dom.warningsEl.classList.remove('hidden');
-        }
-        if (!data.plans?.length) {
-          dom.emptyState.classList.remove('hidden');
-          return;
-        }
-        renderResults(data.plans);
       } catch (err) {
         showError(`网络请求失败：${err.message}`);
       } finally {
         setLoading(false);
+        await destPromise;
       }
-      await destPromise;
     }
 
     async function runMultiDay(q) {
@@ -603,8 +601,8 @@
               <span class="md-date">${escapeHTML(d.date)} ${isBest ? '<span class="md-best-tag">最佳</span>' : ''}</span>
               <span class="md-score">评分 ${(p.score * 100).toFixed(0)}</span>
             </div>
-            <div class="md-route">${escapeHTML(p.depart_time)} → ${escapeHTML(p.arrive_time)} · ${fmtMinutes(p.total_minutes)}${p.is_direct ? ' · 直达' : ' · 中转'}${p.has_sleeper ? ' · 卧铺' : ''}</div>
-            <button type="button" class="md-detail" data-date="${escapeHTML(d.date)}">查看当日全部方案 →</button>
+            <div class="md-route">${escapeHTML(p.depart_time)} - ${escapeHTML(p.arrive_time)} · ${fmtMinutes(p.total_minutes)}${p.is_direct ? ' · 直达' : ' · 中转'}${p.has_sleeper ? ' · 卧铺' : ''}</div>
+            <button type="button" class="md-detail" data-date="${escapeHTML(d.date)}">查看当日全部方案</button>
           </li>`;
       }).join('');
 
