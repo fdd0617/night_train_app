@@ -523,14 +523,23 @@ button {
 }
 
 .plan-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
 .plan-card {
   position: relative;
-  padding: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "route"
+    "tags"
+    "reasons";
+  gap: 12px;
+  align-items: stretch;
+  width: 100%;
+  padding: 16px 18px;
   box-shadow: none;
 }
 
@@ -552,16 +561,18 @@ button {
 }
 
 .plan-route {
+  grid-area: route;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding-right: 54px;
-  margin-bottom: 12px;
+  gap: 16px;
+  min-width: 0;
+  padding-right: 0;
+  margin-bottom: 0;
 }
 
 .plan-time-block,
 .plan-station-block {
-  min-width: 70px;
+  min-width: 96px;
   text-align: left;
 }
 
@@ -631,11 +642,13 @@ button {
 }
 
 .plan-route-transfer {
+  grid-area: route;
   display: grid;
-  grid-template-columns: minmax(70px, auto) 1fr minmax(104px, auto) 1fr minmax(70px, auto);
+  grid-template-columns: minmax(96px, 0.7fr) minmax(180px, 1fr) minmax(160px, auto) minmax(180px, 1fr) minmax(96px, 0.7fr);
   align-items: center;
-  gap: 10px;
-  padding-right: 54px;
+  gap: 18px;
+  min-width: 0;
+  padding-right: 0;
 }
 
 .plan-route-transfer .plan-station-block {
@@ -643,7 +656,7 @@ button {
 }
 
 .plan-station-transfer {
-  padding: 8px;
+  padding: 10px 12px;
   border-radius: 8px;
   background: var(--surface-2);
   border: 1px dashed var(--border-strong);
@@ -677,10 +690,12 @@ button {
 }
 
 .plan-tags {
+  grid-area: tags;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 12px 0;
+  justify-content: flex-start;
+  margin: 0;
 }
 
 .tag {
@@ -713,12 +728,14 @@ button {
 }
 
 .tag-score {
-  margin-left: auto;
+  margin-left: 0;
   color: var(--text);
 }
 
 .plan-reasons {
+  grid-area: reasons;
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 5px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
@@ -878,6 +895,25 @@ button {
   .workspace-copy {
     text-align: left;
   }
+
+  .plan-card {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "route"
+      "tags"
+      "reasons";
+    align-items: stretch;
+  }
+
+  .plan-tags {
+    justify-content: flex-start;
+  }
+
+  .plan-reasons {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
 }
 
 @media (max-width: 720px) {
@@ -913,10 +949,6 @@ button {
     margin-bottom: 0;
   }
 
-  .plan-list {
-    grid-template-columns: 1fr;
-  }
-
   .plan-route,
   .plan-route-transfer {
     padding-right: 0;
@@ -924,10 +956,15 @@ button {
 
   .plan-route-transfer {
     grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .plan-leg {
     min-height: 34px;
+  }
+
+  .plan-reasons {
+    grid-template-columns: 1fr;
   }
 
   .tag-score {
